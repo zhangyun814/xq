@@ -22,17 +22,31 @@
 
 ## 快速开始
 
+**日常只有一条命令。**
+
 ```bash
-# 1. 首次：重建股票名录（依赖网络）
-python3 build_universe.py
+python3 active_signals.py          # 抓新帖 + 实时行情 + 重算，出结果和 CSV
+```
 
-# 2. 全量同步语料 + 抓行情 + 跑回测（几分钟）
-python3 run_all.py
+股票名录（`universe.json` / `alias.json`）缺失会自动重建，不需要先手动跑 `build_universe.py`。
 
-# 3. 筛选：近 5 天信号 ∩ 近 90 天活跃池
-python3 active_signals.py
+### 另外两条命令什么时候用
 
-# 4. 起 Web 界面
+| 命令 | 频率 | 干什么 |
+|---|---|---|
+| `python3 active_signals.py` | **每天** | 筛选。结果在终端 + `活跃池_近5天翻倍.csv` |
+| `python3 active_signals.py --full` | 想刷新研究底稿时 | 等于替你跑一遍 `run_all.py`：抓帖 → 合并语料 → 补日线 → 重跑事件研究，再筛选。几分钟 |
+| `python3 build_universe.py` | 几乎不用 | 只在名录缺失时由 `resolve_v2.py` 自动调用 |
+
+想一步到位、连研究底稿一起刷新：
+
+```bash
+python3 active_signals.py --full
+```
+
+### 起界面
+
+```bash
 python3 webapp.py          # → http://localhost:8000
 # 或容器
 docker compose up -d       # → http://localhost:8000
@@ -46,6 +60,8 @@ docker compose up -d       # → http://localhost:8000
 | `--mode all` | | 含业绩、称谓、模糊 |
 | `--win5 N` | 5 | 信号帖的时间窗口（天） |
 | `--pool N` | 90 | 活跃池范围（天） |
+| `--full` | 关 | 先刷新语料与回测底稿（跑 `run_all.py`），再筛选 |
+| `--help` | | 用法 |
 
 ### 页面
 
@@ -72,15 +88,15 @@ docker compose up -d       # → http://localhost:8000
 
 | 文件 | 作用 |
 |---|---|
-| `build_universe.py` | 扫语料里的股票代码，建 `universe.json`（代码↔名称↔行情符号） |
-| `resolve_v2.py` | 帖子正文 → 结构化记录，写 `resolved.json` |
+| `build_universe.py` | 扫全市场建 `universe.json` / `alias.json`（代码↔名称↔行情符号）。缺失时自动触发 |
+| `resolve_v2.py` | 帖子正文 → 结构化记录，**合并**进 `resolved.json`（不覆盖历史） |
 | `fetch_klines.py` | 抓日线，写 `klines.json`（前复权） |
 | `fetch_ohlc.py` | 抓开/收盘双序列，写 `ohlc.json`（**必须同源**，详见下方坑） |
 | `scan.py` | 星球抓取 + 「翻倍」命中扫描，写 `scan_cache.json` |
 | `semantics.py` | **语义消歧核心**：把「翻倍」归到目标价/业绩/称谓/模糊 |
 | `trace.py` | 单股行情追踪、超额收益计算 |
 | `event_study.py` | 事件研究，写 `events.json` |
-| `run_all.py` | 上面几步串起来跑 |
+| `run_all.py` | 上面几步串起来跑（研究底稿刷新，`--full` 会调用） |
 
 ### 回测与选股
 
@@ -127,6 +143,8 @@ docker compose up -d       # → http://localhost:8000
 **发帖时间决定可行性。** 60%+ 的帖子发在 21–23 点，当日收盘买入根本不可能，最早的下手时点是次日开盘。
 
 **语义规则改一处，全表数字都要重跑。** 加过去时过滤后，目标价口径从 47 掉到 46，t 值从 2.62 变 2.67，业绩口径从 82 涨到 91。改完 `semantics.py` 必须重跑 `event_study` → `exit_rules` → `entry_rules` → `report.html`，不能只改一处。
+
+**写语料的脚本必须用合并，不能覆盖。** `resolved.json` 里的历史语料是从 `raw/` + `samples/` 解出来的，而这两个目录是可以清理的。清理之后，如果 `resolve_v2.py` 还按「扫描到的全部重写一遍」来干，它只会扫到这次抓的几页新帖，然后把 5,214 条历史**全部覆盖掉**。所以现在改成按 `topic_id` 合并：读旧文件当底，新解析的覆盖同名条目，其余原样保留。同理，`run_all.py` 原来的自建分页逻辑（`raw/inc_*.json` + `state.json` 游标）已经删掉，统一走 `scan.fetch_posts`——**同一件事只留一条实现路径**。
 
 ---
 

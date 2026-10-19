@@ -44,7 +44,22 @@ NICK = {
     "涛涛": "301345", "双元": "688623", "马应龙": "600993", "飞荣达": "300602",
 }
 
+def ensure_universe():
+    """universe.json / alias.json 不在就自动构建，别让用户先跑一条命令。"""
+    import subprocess, sys
+    miss = [n for n in ("universe.json", "alias.json")
+            if not os.path.exists(os.path.join(BASE, n))]
+    if not miss:
+        return
+    print(f"缺 {'、'.join(miss)}，自动构建股票名录…")
+    r = subprocess.run([sys.executable, os.path.join(BASE, "build_universe.py")],
+                       cwd=BASE, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise SystemExit("构建股票名录失败：\n" + (r.stderr or r.stdout)[-800:])
+
+
 def build():
+    ensure_universe()
     uni = json.load(open(os.path.join(BASE, "universe.json")))
     alias = json.load(open(os.path.join(BASE, "alias.json")))
     d = {}
@@ -81,39 +96,85 @@ def find_codes(txt, d, idx):
                 hit.add(d[key])
     return hit
 
-def main():
-    d, idx = build()
-    print("字典条目", len(d))
+def sources():
+    """把三个来源的原始帖子收进来，按 topic_id 去重。
+
+    历史全量只存在于 resolved.json 里（raw/ 和 samples/ 早已清理掉），
+    所以这里只负责「还没解析过的增量」——完整语料由 main() 合并保底。
+    """
     posts = {}
     for pat in ("raw/*.json", "samples/*.json"):
         for f in glob.glob(os.path.join(BASE, pat)):
-            j = json.load(open(f))
+            try:
+                j = json.load(open(f))
+            except Exception:
+                continue
             for t in j.get("topics_brief", []) or []:
-                posts[t["topic_id"]] = t
-    rows = [(t["topic_id"], t["create_time"][:19], clean(t.get("content"))) for t in posts.values()]
+                if t.get("topic_id"):
+                    posts[t["topic_id"]] = t
+    sc = os.path.join(BASE, "scan_cache.json")
+    if os.path.exists(sc):
+        try:
+            for t in json.load(open(sc)).get("posts", []) or []:
+                tid = t.get("topic_id") or t.get("create_time")
+                if tid:
+                    posts.setdefault(tid, t)
+        except Exception:
+            pass
+    return posts
 
-    cnt = collections.Counter(); out = []
+
+def main():
+    d, idx = build()
+    print("字典条目", len(d))
+
+    # 已有语料先读进来当底，避免这次只解析到几页新帖就把历史覆盖没了
+    rp = os.path.join(BASE, "resolved.json")
+    base = {}
+    if os.path.exists(rp):
+        try:
+            for o in json.load(open(rp)):
+                base[o["id"]] = o
+        except Exception:
+            base = {}
+    old_n = len(base)
+
+    posts = sources()
+    rows = [(t["topic_id"], t["create_time"][:19], clean(t.get("content")))
+            for t in posts.values()
+            if t.get("topic_id") and t.get("create_time")]
+
+    cnt = collections.Counter()
     for tid, ct, txt in rows:
         cs = find_codes(txt, d, idx)
-        out.append({"id": tid, "time": ct, "codes": sorted(cs), "text": txt})
+        base[tid] = {"id": tid, "time": ct, "codes": sorted(cs), "text": txt}
         cnt.update(cs)
-    json.dump(out, open(os.path.join(BASE, "resolved.json"), "w"), ensure_ascii=False)
+
+    out = sorted(base.values(), key=lambda o: o.get("time", ""))
+    json.dump(out, open(rp, "w"), ensure_ascii=False)
+
+    add = len(out) - old_n
+    print(f"语料 {old_n} → {len(out)} 条"
+          + (f"（本次合并 {add:+d}）" if add else "（无新增）"))
 
     nm = {}
     for k, v in d.items():
         nm.setdefault(v, k)
-    print(f"帖子 {len(rows)}，提及 {sum(len(o['codes']) for o in out)} 次，覆盖 {len(cnt)} 只")
-    print(f"含标的的帖子 {sum(1 for o in out if o['codes'])} ({sum(1 for o in out if o['codes'])/len(rows)*100:.1f}%)")
+    withc = [o for o in out if o["codes"]]
+    print(f"帖子 {len(out)}，提及 {sum(len(o['codes']) for o in out)} 次，覆盖 {len(cnt)} 只")
+    pct = len(withc) / len(out) * 100 if out else 0
+    print(f"含标的的帖子 {len(withc)} ({pct:.1f}%)")
     print("\n== top25 ==")
     for c, k in cnt.most_common(25):
         print(f"  {nm.get(c,c):10s} {c}  {k}")
 
-    print("\n== 精度抽检：随机 12 篇，看识别是否合理 ==")
-    random.seed(7)
-    for o in random.sample(out, 12):
-        names = [nm.get(c, c) for c in o["codes"]][:6]
-        print(f"[{o['time'][:10]}] {o['text'][:58]}")
-        print(f"    → {names}")
+    if out:
+        print("\n== 精度抽检：随机 12 篇，看识别是否合理 ==")
+        random.seed(7)
+        for o in random.sample(out, min(12, len(out))):
+            names = [nm.get(c, c) for c in o["codes"]][:6]
+            print(f"[{o['time'][:10]}] {o['text'][:58]}")
+            print(f"    → {names}")
 
 if __name__ == "__main__":
     main()

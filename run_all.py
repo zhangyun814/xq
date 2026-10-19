@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-星辰财经星球 · 信号规律一键流水线
+"""语料 + 回测底稿刷新（不是日常筛选，日常只需要 active_signals.py）
 
 用法：
-    python3 run_all.py            # 增量更新（只抓上次之后的新帖）
-    python3 run_all.py --full     # 忽略缓存，重抓最近 7 天
-    python3 run_all.py --days 30  # 本次额外回溯 30 天
+    python3 run_all.py            # 抓近 7 天帖子，合并进语料，重跑回测
+    python3 run_all.py --days 30  # 回溯 30 天
 
-流程：增量抓帖 → 实体识别 → 补抓行情 → 事件研究 → 输出 summary.json
-产物：summary.json（结论数字）、events.json（事件明细）、report.html 模板待填
+流程：抓帖（scan.fetch_posts）→ 实体识别（增量合并）→ 补抓行情 → 事件研究 → summary.json
+产物：resolved.json（合并，不覆盖）、klines.json、events.json、summary.json
+
+注意：resolve_v2.py 现在是合并模式，历史语料不会被这次抓到的几页冲掉。
 """
-import json, os, subprocess, sys, time, glob
+import json, os, subprocess, sys, time
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 PY = sys.executable
-GROUP = "28888114545551"
-STATE = os.path.join(BASE, "state.json")
 
 
 def run(script, label):
@@ -32,60 +30,21 @@ def run(script, label):
     return True
 
 
-def load_state():
-    if os.path.exists(STATE):
-        try:
-            return json.load(open(STATE))
-        except Exception:
-            pass
-    return {"last_topic_time": "2026-01-01T00:00:00.000+0800"}
-
-
-def harvest(full=False, days=0):
-    """从最新往前翻，直到碰到上次的游标"""
-    st = load_state()
-    stop_at = st["last_topic_time"]
-    if full or days:
-        from datetime import datetime, timedelta
-        dt = datetime.now() - timedelta(days=max(days, 7))
-        stop_at = dt.strftime("%Y-%m-%dT%H:%M:%S.000+0800")
-
-    outdir = os.path.join(BASE, "raw")
-    os.makedirs(outdir, exist_ok=True)
-    end_time, pages, got, newest = None, 0, 0, None
-
-    while pages < 120:
-        cmd = ["zsxq-cli", "group", "+topics", "--group-id", GROUP,
-               "--limit", "30", "--json"]
-        if end_time:
-            cmd += ["--end-time", end_time]
-        r = subprocess.run(cmd, capture_output=True, text=True)
-        if r.returncode != 0 or not r.stdout.strip().startswith("{"):
-            break
-        try:
-            d = json.loads(r.stdout)
-        except Exception:
-            break
-        topics = d.get("topics_brief") or []
-        if not topics:
-            break
-        pages += 1
-        got += len(topics)
-        if newest is None:
-            newest = topics[0]["create_time"]
-        oldest = topics[-1]["create_time"]
-        # 落盘
-        fname = os.path.join(outdir, f"inc_{oldest[:19].replace(':','').replace('-','').replace('T','')}.json")
-        json.dump(d, open(fname, "w"), ensure_ascii=False)
-        if oldest <= stop_at or not d.get("has_more"):
-            break
-        end_time = d.get("next_end_time")
-        time.sleep(0.3)
-
-    if newest:
-        json.dump({"last_topic_time": newest}, open(STATE, "w"))
-    print(f"  抓取 {got} 条 / {pages} 页，最新 {newest}")
-    return got > 0
+def harvest(days=7):
+    """统一走 scan.fetch_posts，别再自己维护一套 raw/ 分页逻辑。"""
+    sys.path.insert(0, BASE)
+    try:
+        import scan as S
+    except Exception as e:
+        print(f"!! 无法载入 scan.py：{e}")
+        return False
+    try:
+        posts = S.fetch_posts(days)
+    except Exception as e:
+        print(f"!! 抓帖失败（{e}）——本次只重算已有语料")
+        return False
+    print(f"  抓取 {len(posts)} 条（近 {days} 天，来源 {S.LAST_FETCH_SOURCE or '?'}）")
+    return len(posts) > 0
 
 
 def summarize():
@@ -143,8 +102,8 @@ def summarize():
     print(f"事件 {len(ev)} 个 · 语料 {len(res)} 帖 · 覆盖 {len(mention)} 只")
     print("=" * 66)
     print(f"{'信号':12s}{'N':>5s}{'T+5均值':>9s}{'中位':>8s}{'胜率':>7s}{'t':>6s}{'T+20中位':>9s}")
-    order = ["翻倍/空间", "强call/推荐", "低估/错杀", "拐点", "涨价/提价",
-             "超预期", "反转", "无强信号"]
+    order = ["翻倍(目标价)", "翻倍(业绩)", "翻倍(模糊)", "强call/推荐", "低估/错杀",
+             "拐点", "涨价/提价", "超预期", "反转", "无强信号"]
     for k in order:
         if k not in table:
             continue
@@ -159,18 +118,19 @@ def summarize():
 
 def main():
     args = sys.argv[1:]
-    full = "--full" in args
-    days = 0
+    days = 7
     if "--days" in args:
         days = int(args[args.index("--days") + 1])
+    if "--full" in args and days == 7:
+        days = 30
 
     print("=" * 66)
-    print("星辰财经星球 · 信号规律流水线")
+    print("星辰财经星球 · 语料与回测底稿刷新")
     print("=" * 66)
-    if not harvest(full, days):
-        print("没有新帖，直接用缓存重算。")
+    if not harvest(days):
+        print("没有新帖，直接用已有语料重算。")
 
-    ok = run("resolve_v2.py", "实体识别（全名+简称+俗称）")
+    ok = run("resolve_v2.py", "实体识别（增量合并进 resolved.json）")
     if not ok:
         return
     ok = run("fetch_klines.py", "抓取/刷新日线（约 40s）")

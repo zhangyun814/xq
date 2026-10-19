@@ -314,8 +314,38 @@ def screen(mode="target", win5=5, pool_days=90, log=print, save=True):
 
 
 # ---------------- 命令行 ----------------
+HELP = """用法：
+    python3 active_signals.py                 日常筛选（抓新帖 + 实时行情 + 重算）
+    python3 active_signals.py --full          连语料与回测底稿一起刷新（几分钟）
+    python3 active_signals.py --mode all      含业绩/模糊口径一起看
+    python3 active_signals.py --win5 10       信号窗口拉到 10 天
+    python3 active_signals.py --pool 120      活跃池拉到 120 天
+
+只有第一条是日常要跑的。--full 等于替你跑了 run_all.py（抓帖+日线+事件研究），
+股票名录缺失会自动重建，不需要先跑 build_universe.py。
+"""
+
+
+def refresh_all():
+    """--full：先把语料和回测底稿刷一遍，再筛。"""
+    import subprocess
+    print("▶ 刷新语料与回测底稿（run_all.py）…\n", flush=True)
+    r = subprocess.run([sys.executable, os.path.join(BASE, "run_all.py")],
+                       cwd=BASE)
+    if r.returncode != 0:
+        print("\n!! 底稿刷新失败，继续用现有语料筛选\n")
+        return False
+    print()
+    return True
+
+
 def main():
     a = sys.argv[1:]
+    if "-h" in a or "--help" in a:
+        print(HELP)
+        return
+    if "--full" in a or "--refresh" in a:
+        refresh_all()
     win5 = int(a[a.index("--win5") + 1]) if "--win5" in a else 5
     pool_days = int(a[a.index("--pool") + 1]) if "--pool" in a else 90
     mode = a[a.index("--mode") + 1] if "--mode" in a else "target"
