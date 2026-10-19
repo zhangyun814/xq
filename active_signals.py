@@ -24,7 +24,7 @@ import json, os, sys, csv, collections
 from datetime import datetime, timedelta
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.environ.get("ZSXQ_OUT", BASE)          # 可写目录（容器里挂 volume）
+OUT = os.environ.get("ZSXQ_OUT", os.path.join(BASE, "out"))   # 生成物统一放 out/，可整目录挂 volume
 sys.path.insert(0, BASE)
 
 import resolve_v2 as rv
@@ -115,20 +115,31 @@ def csv_path(mode, win5):
 
 
 def write_csv(rows, mode, win5):
-    """命令行和 Web 都用这一份，别让导出格式两处维护。"""
+    """命令行和 Web 都用这一份，别让导出格式两处维护。
+
+    同时写两份：固定名的是「最新」（webapp /api/csv 靠这个路径下载），
+    归档目录下按日期另存一份，历史逐次留存、互不覆盖。"""
     if not rows:
         return None
     f = csv_path(mode, win5)
     try:
         os.makedirs(OUT, exist_ok=True)
-        with open(f, "w", newline="", encoding="utf-8-sig") as fh:
-            w = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
-            w.writeheader()
-            w.writerows(rows)
+        for path in (f, _archive_path(mode, win5)):
+            with open(path, "w", newline="", encoding="utf-8-sig") as fh:
+                w = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
+                w.writeheader()
+                w.writerows(rows)
         return f
     except Exception as e:
         print(f"!! CSV 保存失败（目录可能只读）：{e}")
         return None
+
+
+def _archive_path(mode, win5):
+    tag = "" if mode == "target" else "_全口径"
+    arch = os.path.join(OUT, "归档")
+    os.makedirs(arch, exist_ok=True)
+    return os.path.join(arch, f"活跃池_近{win5}天翻倍{tag}_{datetime.now():%Y-%m-%d}.csv")
 
 
 def diff_of(rows, prev):
