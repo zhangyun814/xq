@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>翻倍信号筛选台</title>
+<style>
+:root{
+  --bg:#0d1014; --panel:#151a21; --panel2:#1b212a; --line:#252c37; --line2:#1c222b;
+  --txt:#e8ecf1; --dim:#8b97a6; --dim2:#5f6b7a;
+  --accent:#e0b060; --red:#e8544a; --green:#2a9d6e; --blue:#4a90d9; --amber:#e8b04a;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--txt); min-height:100vh;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  line-height:1.6; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:34px 22px 80px}
+
+/* ── 顶栏 ── */
+.top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap}
+h1{font-size:23px;font-weight:650;letter-spacing:-.2px}
+h1 em{font-style:normal;color:var(--accent)}
+.sub{font-size:12.5px;color:var(--dim);margin-top:6px}
+.pills{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pill{
+  display:inline-flex;align-items:center;gap:6px;font-size:11.5px;
+  background:var(--panel);border:1px solid var(--line);border-radius:100px;
+  padding:5px 11px;color:var(--dim);
+}
+.pill b{color:var(--txt);font-weight:600}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex:none}
+.dot.warn{background:var(--amber)}
+.dot.bad{background:var(--red)}
+
+/* ── 控制区 ── */
+.bar{
+  margin-top:22px;background:var(--panel);border:1px solid var(--line);border-radius:14px;
+  padding:16px 18px;display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;
+}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:11px;color:var(--dim2);letter-spacing:.4px}
+.seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:3px}
+.seg button{
+  background:none;border:0;color:var(--dim);font-size:12.5px;padding:6px 13px;
+  border-radius:6px;cursor:pointer;font-family:inherit;transition:.15s;
+}
+.seg button.on{background:var(--panel2);color:var(--txt);box-shadow:0 1px 0 #2c3442}
+.seg button:hover:not(.on){color:var(--txt)}
+input[type=number]{
+  width:74px;background:var(--bg);border:1px solid var(--line);border-radius:9px;
+  color:var(--txt);padding:8px 10px;font-size:13px;font-family:inherit;
+}
+input[type=number]:focus{outline:0;border-color:var(--accent)}
+.go{
+  margin-left:auto;display:inline-flex;align-items:center;gap:9px;
+  background:var(--accent);color:#171207;border:0;border-radius:10px;
+  padding:12px 26px;font-size:14px;font-weight:650;font-family:inherit;
+  cursor:pointer;transition:.16s;letter-spacing:.2px;
+}
+.go:hover{background:#eec172;transform:translateY(-1px)}
+.go:active{transform:translateY(0)}
+.go:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.go .spin{
+  width:13px;height:13px;border-radius:50%;border:2px solid #17120755;
+  border-top-color:#171207;animation:sp .7s linear infinite;display:none;
+}
+.go.busy .spin{display:block}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* ── 提示条 ── */
+.note{
+  margin-top:14px;display:none;gap:10px;align-items:flex-start;
+  background:#1d1a12;border:1px solid #3b3320;border-radius:10px;
+  padding:11px 14px;font-size:12.5px;color:#cfb37a;line-height:1.75;
+}
+.note.show{display:flex}
+.note b{color:#e8c98a}
+.note code{
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  background:#2a2416;border:1px solid #443a24;border-radius:4px;
+  padding:1px 6px;margin:0 2px;font-size:11.5px;color:#f0d9a4;white-space:nowrap;
+}
+
+/* ── 日志 ── */
+.logwrap{margin-top:14px;border:1px solid var(--line2);border-radius:10px;background:#0b0e12;overflow:hidden;display:none}
+.logwrap.show{display:block}
+.loghead{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:7px 12px;font-size:11px;color:var(--dim2);
+  border-bottom:1px solid var(--line2);background:#0f1319;cursor:pointer;
+}
+.log{font:11.5px/1.75 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:#7f8b99;padding:9px 12px;max-height:190px;overflow:auto;white-space:pre-wrap}
+.log.closed{display:none}
+.log .ok{color:#4fc08d}.log .err{color:#ef7268}
+
+/* ── 结果 ── */
+.res{margin-top:26px;display:none}
+.res.show{display:block}
+.reshead{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+.reshead h2{font-size:17px;font-weight:600}
+.reshead .meta{font-size:12px;color:var(--dim)}
+.big{font-size:26px;font-weight:700;color:var(--accent);line-height:1}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:13px;overflow:hidden}
+.scroll{overflow-x:auto}
+th{
+  text-align:left;font-size:11px;font-weight:500;color:var(--dim2);
+  padding:11px 13px;border-bottom:1px solid var(--line);white-space:nowrap;
+  background:#12171d;letter-spacing:.3px;
+}
+td{padding:12px 13px;border-bottom:1px solid var(--line2);white-space:nowrap;vertical-align:middle}
+tr:last-child td{border-bottom:0}
+tr.body:hover td{background:#171d25}
+.code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--dim)}
+.nm{font-weight:600}
+.up{color:var(--red);font-weight:650}
+.dn{color:var(--green);font-weight:650}
+.mut{color:var(--dim2)}
+.tag{display:inline-block;font-size:11px;padding:2.5px 8px;border-radius:5px;border:1px solid var(--line);color:var(--dim)}
+.tag.hold{background:#2a2416;border-color:#42391f;color:#d9b877}
+.tag.wait{background:#152230;border-color:#20374d;color:#7ab0dd}
+.tag.out{color:var(--dim2)}
+.quote{
+  font-size:11.5px;color:var(--dim2);font-weight:400;
+  max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+tr.detail td{border-bottom:1px solid var(--line2);padding-top:0;padding-bottom:10px;font-weight:400}
+tr.detail:hover td{background:none}
+
+/* ── 变化 ── */
+.diff{margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.diff h3{font-size:12px;color:var(--dim2);font-weight:500;margin-bottom:9px;letter-spacing:.3px}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{font-size:12px;padding:5px 10px;border-radius:7px;border:1px solid;line-height:1.4}
+.chip.add{background:#14251c;border-color:#1f4534;color:#5ec894}
+.chip.del{background:#251517;border-color:#472326;color:#e0897f}
+.chip.mod{background:#1b1c26;border-color:#333650;color:#9aa2d4}
+.chip.none{background:var(--panel2);border-color:var(--line);color:var(--dim)}
+
+.empty{text-align:center;padding:56px 20px;color:var(--dim)}
+.empty b{display:block;color:var(--txt);font-size:15px;margin-bottom:7px;font-weight:600}
+.foot{margin-top:30px;font-size:11.5px;color:var(--dim2);line-height:1.9;border-top:1px solid var(--line2);padding-top:16px}
+.foot b{color:var(--dim)}
+.dl{color:var(--accent);text-decoration:none;font-size:12px;border-bottom:1px dotted #6b5730}
+.dl:hover{border-bottom-style:solid}
+.chk{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim);
+  cursor:pointer;user-select:none;padding:0 2px;white-space:nowrap}
+.chk input{width:14px;height:14px;accent-color:#e0b060;cursor:pointer;margin:0}
+.chk:hover{color:var(--txt)}
+@media(max-width:700px){
+  .wrap{padding:22px 14px 60px}
+  .go{margin-left:0;width:100%;justify-content:center}
+  .bar{gap:12px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div>
+      <h1>翻倍信号筛选台 · <em>点一下，重算一遍</em></h1>
+      <div class="sub">知识星球语料 × 实时行情　｜　只看「目标价」那层翻倍，业绩翻倍不算买点</div>
+    </div>
+    <div class="pills" id="pills">
+      <span class="pill"><span class="dot"></span>读取状态…</span>
+    </div>
+  </div>
+
+  <div class="bar">
+    <div class="field">
+      <label>语义口径</label>
+      <div class="seg" id="mode">
+        <button data-v="target" class="on">只看目标价</button>
+        <button data-v="all">含业绩/模糊</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>信号窗口（天）</label>
+      <input type="number" id="win5" value="5" min="1" max="30">
+    </div>
+    <div class="field">
+      <label>活跃池（天）</label>
+      <input type="number" id="pool" value="90" min="10" max="365">
+    </div>
+    <button class="go" id="go"><span class="spin"></span><span id="goTxt">重新筛选</span></button>
+  </div>
+
+  <div class="note" id="note"></div>
+
+  <div class="logwrap" id="logwrap">
+    <div class="loghead" onclick="document.getElementById('log').classList.toggle('closed')">
+      <span>运行日志</span><span id="logHint">点击折叠</span>
+    </div>
+    <div class="log" id="log"></div>
+  </div>
+
+  <div class="res" id="res"></div>
+
+  <div class="foot">
+    <b>买入规则</b>　信号次日开盘买入，不挂回调单、不等均线（11 种时点回测里唯一全胜解）。<br>
+    <b>出场规则</b>　不设止损；需要机械出场就「止盈 +10% 或持满 20 个交易日」，先到先出。<br>
+    <b>回测依据</b>　目标价口径 N=46，T+20 超额均值 +11.28%、中位 +3.53%、胜率 54.3%、t=2.67；业绩口径 −1.44%。21 种出场规则中 9 种价格触发规则全部更差，8% 止损会打掉 57.8% 的仓位。<br>
+    <b>口径边界</b>　样本 2025-08~2026-10 单边偏强市，未计交易成本与涨跌停约束；t 值未做多重比较校正，属方向性参考。
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let META = null, MODE = 'target', POLL = null, T0 = 0;
+
+/* ── 首屏状态 ── */
+async function loadMeta(){
+  try{
+    META = await (await fetch('/api/meta')).json();
+  }catch(e){ return; }
+  const age = META.corpus_age_days;
+  const dotc = age <= 0 ? '' : (age <= 3 ? 'warn' : 'bad');
+  $('#pills').innerHTML = `
+    <span class="pill"><span class="dot ${dotc}"></span>语料 <b>${META.corpus_newest || '—'}</b>${age>0?`（${age} 天前）`:''}</span>
+    <span class="pill"><span class="dot"></span>行情 <b>实时</b></span>`;
+
+  const n = $('#note');
+  n.className = 'note show';
+  n.innerHTML = age <= 0
+    ? `<div>✓</div><div><b>语料是最新的（${META.corpus_newest}）。点按钮会重拉现价、重拉日线、重新做语义归属。</b>
+        有新帖要进来，去终端跑一次 <code>python3 active_signals.py</code>，它负责抓帖；抓完回本页点一下就是新数据。</div>`
+    : `<div>⚠️</div><div><b>语料还是 ${META.corpus_newest} 的，已经 ${age} 天没更新，活跃池可能漏掉新票。</b>
+        去终端跑一次 <code>python3 active_signals.py</code> 抓帖，回来点按钮即可。</div>`;
+}
+
+/* ── 口径切换 ── */
+$('#mode').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b) return;
+  [...$('#mode').children].forEach(x => x.classList.toggle('on', x === b));
+  MODE = b.dataset.v;
+});
+
+/* ── 开跑 ── */
+$('#go').addEventListener('click', async () => {
+  if($('#go').classList.contains('busy')) return;
+  setBusy(true);
+  $('#log').innerHTML = '';
+  $('#logwrap').classList.add('show');
+  $('#log').classList.remove('closed');
+  T0 = Date.now();
+  timer = setInterval(() => {
+    $('#goTxt').textContent = `筛选中 ${((Date.now()-T0)/1000).toFixed(1)}s`;
+  }, 100);
+
+  const body = {
+    mode: MODE,
+    win5: +$('#win5').value || 5,
+    pool: +$('#pool').value || 90,
+    refresh: false          // 抓帖只在终端跑，页面只负责重算
+  };
+  let r;
+  try{
+    r = await (await fetch('/api/screen', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    })).json();
+  }catch(e){
+    finish('请求失败：' + e.message); return;
+  }
+  if(r.busy){ poll(r.job); }        // 已有一个在跑，直接接上
+  else poll(r.job);
+});
+
+let timer = null;
+function setBusy(b){
+  $('#go').classList.toggle('busy', b);
+  $('#go').disabled = b;
+  if(!b){ clearInterval(timer); $('#goTxt').textContent = '重新筛选'; }
+}
+
+function poll(id){
+  clearInterval(POLL);
+  POLL = setInterval(async () => {
+    let j;
+    try{ j = await (await fetch('/api/job/' + id)).json(); }
+    catch(e){ return; }
+    if(j.log) $('#log').innerHTML = j.log.map(colorize).join('\n');
+    const lg = $('#log'); lg.scrollTop = lg.scrollHeight;
+    if(j.status === 'done'){ clearInterval(POLL); render(j.result); finish(); }
+    if(j.status === 'error'){ clearInterval(POLL); finish(j.error); }
+  }, 600);
+}
+
+function colorize(line){
+  const esc = line.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  if(line.includes('!!') || line.includes('失败')) return `<span class="err">${esc}</span>`;
+  if(line.includes('完成') || line.includes('已刷新')) return `<span class="ok">${esc}</span>`;
+  return esc;
+}
+
+function finish(err){
+  setBusy(false);
+  if(err){
+    $('#res').className = 'res show';
+    $('#res').innerHTML = `<div class="card"><div class="empty"><b>没跑成功</b>${err}</div></div>`;
+  }
+}
+
+/* ── 渲染结果 ── */
+function pnlCell(v){
+  if(v === '' || v === null || v === undefined) return '<span class="mut">—</span>';
+  return `<span class="${v > 0 ? 'up' : (v < 0 ? 'dn' : 'mut')}">${v > 0 ? '+' : ''}${v.toFixed(2)}%</span>`;
+}
+function num(v, suffix=''){
+  if(v === '' || v === null || v === undefined) return '<span class="mut">—</span>';
+  const c = v > 0 ? 'up' : (v < 0 ? 'dn' : 'mut');
+  return `<span class="${c}">${v > 0 ? '+' : ''}${v}${suffix}</span>`;
+}
+function statusTag(s){
+  const cls = s.includes('持有') ? 'hold' : (s.includes('待买入') || s.includes('待次日') ? 'wait' : 'out');
+  return `<span class="tag ${cls}">${s || '—'}</span>`;
+}
+function semTag(sem){
+  if(!sem) return '';
+  const cls = sem.includes('目标价') ? 'hold' : (sem.includes('业绩') ? 'out' : 'wait');
+  return ` <span class="tag ${cls}" style="font-size:10px;padding:1px 5px">${sem}</span>`;
+}
+
+function render(r){
+  const rows = r.rows || [], m = r.meta || {}, d = r.diff || {};
+  const kPool = '近' + m.pool_days + '天提及', kWin = '近' + m.win5 + '天信号帖';
+  const el = $('#res');
+  el.className = 'res show';
+
+  const srcLabel = {host:'宿主机刚抓取', network:'本次实时抓取', cache:'抓取缓存', corpus:'挂载语料'}[m.corpus_source] || '挂载语料';
+  const head = `
+    <div class="reshead">
+      <h2>命中</h2><span class="big">${rows.length}</span><h2>只</h2>
+      <span class="meta">${m.run_at || ''}　口径 ${m.mode === 'all' ? '含业绩/模糊' : '只看目标价'}
+        　信号 ${m.win5} 天 ∩ 活跃池 ${m.pool_days} 天（${m.pool_size} 只）
+        　语料最新 ${m.corpus_newest} · ${srcLabel}</span>
+    </div>`;
+
+  if(!rows.length){
+    el.innerHTML = head + `<div class="card"><div class="empty">
+      <b>这 ${m.win5} 天没有新的「目标价翻倍」信号</b>
+      要么是这段时间没人喊翻倍，要么喊的都落在活跃池外。可以试试点上面把窗口放宽到 10 天。
+    </div></div>` + diffBlock(d, m);
+    return;
+  }
+
+  const trs = rows.map(x => `
+    <tr class="body">
+      <td><span class="code">${x['代码']}</span></td>
+      <td class="nm">${x['名称']}${m.mode === 'all' ? semTag(x['语义']) : ''}</td>
+      <td>${x['最近信号日']}</td>
+      <td>${x['买入日'] || '<span class="mut">待次日</span>'}</td>
+      <td>${x['买入价'] || '<span class="mut">—</span>'}</td>
+      <td><b>${x['最新价'] || '—'}</b></td>
+      <td>${pnlCell(x['浮动盈亏%'])}</td>
+      <td>${statusTag(x['状态'])}</td>
+      <td class="mut">${x[kPool] ?? ''}</td>
+      <td>${num(x['近5日涨跌%'], '%')}</td>
+      <td>${num(x['近90日涨跌%'], '%')}</td>
+    </tr>
+    <tr class="detail"><td colspan="11">
+      <span class="quote">「${x['命中词']}」${x['原文'] || ''}</span>
+    </td></tr>`).join('');
+
+  el.innerHTML = head + `
+    <div class="card"><div class="scroll"><table>
+      <tr><th>代码</th><th>名称</th><th>信号日</th><th>买入日</th><th>买入价</th>
+          <th>最新价</th><th>浮动盈亏</th><th>状态</th><th>热度</th><th>近5日</th><th>近90日</th></tr>
+      ${trs}
+    </table></div></div>
+    ${diffBlock(d, m)}
+    <div style="margin-top:12px;font-size:12px;color:var(--dim2)">
+      <a class="dl" href="/api/csv?mode=${m.mode}&win5=${m.win5}">下载 CSV</a>
+      ${m.dropped && Object.keys(m.dropped).length ? '　·　这次还剔掉了：' + Object.entries(m.dropped)
+        .sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k} ${v} 帖`).join('、') : ''}
+    </div>`;
+}
+
+function diffBlock(d, m){
+  if(!m.prev_count){
+    return `<div class="diff"><h3>跟上次比</h3><div class="chips">
+      <span class="chip none">首次记录，下次再点就有增减对比了</span></div></div>`;
+  }
+  const n = d.new || [], g = d.gone || [], mv = d.moved || [];
+  let chips = '';
+  n.forEach(x => chips += `<span class="chip add">+ ${x['代码']} ${x['名称']}　${x['状态']}</span>`);
+  g.forEach(x => chips += `<span class="chip del">− ${x['代码']} ${x['名称']}　离开信号窗</span>`);
+  mv.forEach(x => chips += `<span class="chip mod">~ ${x['代码']} ${x['名称']}　${x['from']} → ${x['to']}</span>`);
+  if(!chips) chips = '<span class="chip none">名单和状态都没变</span>';
+  return `<div class="diff"><h3>跟上次比（${m.prev_time}，${m.prev_count} 只）</h3>
+    <div class="chips">${chips}</div></div>`;
+}
+
+loadMeta().then(() => {
+  // 支持 ?run=target,5,90 或 ?run=1：打开即跑，可存成书签。
+  // 走同步接口，一次请求拿回结果，不用轮询。
+  const q = new URLSearchParams(location.search).get('run');
+  if(!q) return;
+  const p = q.split(',');
+  if(p[0] === 'all'){ MODE = 'all'; document.querySelector('#mode [data-v=all]').click(); }
+  if(p[1]) $('#win5').value = +p[1];
+  if(p[2]) $('#pool').value = +p[2];
+  syncRun();
+});
+
+async function syncRun(){
+  setBusy(true);
+  $('#logwrap').classList.add('show');
+  $('#log').innerHTML = '<span class="ok">运行中…</span>';
+  const t0 = Date.now();
+  const tk = setInterval(() => $('#goTxt').textContent =
+    `筛选中 ${((Date.now()-t0)/1000).toFixed(1)}s`, 100);
+  try{
+    const r = await fetch('/api/screen-sync', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({mode: MODE, win5:+$('#win5').value||5, pool:+$('#pool').value||90, refresh: false})
+    });
+    const j = await r.json();
+    if(j.log) $('#log').innerHTML = j.log.map(colorize).join('\n');
+    if(j.error){ finish(j.error); }
+    else { render(j.result); finish(); }
+  }catch(e){ finish(e.message); }
+  clearInterval(tk);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+# 大文件不进构建上下文：语料是挂载进来的，镜像里只需要代码
+*.json
+*.csv
+out/
+__pycache__/
+*.pyc
+*.tar.gz
+.git
+.gitignore
+Dockerfile
+docker-compose.yml
+README*

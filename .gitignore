@@ -1,0 +1,21 @@
+# ── 数据文件 ────────────────────────────────────────────────
+# 都是可重建的缓存，且含知识星球付费原文，不入库
+resolved.json
+scan_cache.json
+klines.json
+ohlc.json
+events.json
+last_screen*.json
+*.csv
+
+# ── 运行产物 ────────────────────────────────────────────────
+out/
+__pycache__/
+*.pyc
+*.pyo
+.runner_token
+
+# ── 系统 ────────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,15 @@
+services:
+  screen:
+    build: .
+    image: fanbei-screen:1.0
+    container_name: fanbei-screen
+    ports:
+      - "8000:8000"
+    volumes:
+      # 语料/名录/行情缓存：只读挂载，宿主同步完就生效
+      - ./:/data:ro
+      # 输出：CSV 与"上次筛选"对比基线，重启后仍在
+      - ./out:/out
+    environment:
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
