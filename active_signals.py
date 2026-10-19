@@ -155,6 +155,11 @@ def load_all_posts(days=5, log=print):
     if os.path.exists(rp):
         for o in json.load(open(rp)):
             posts[(o["time"], o["text"][:40])] = (o["time"][:10], o["text"])
+    else:
+        # 新目录/新机器第一次跑会走到这里。不吭声的话，活跃池只剩近几天的票，
+        # 结果看着正常、其实是假的「0 只」。
+        log(f"!! 没有 resolved.json：无历史语料，活跃池只能覆盖近 {days} 天")
+        log("   先跑 python3 run_all.py --full 建语料库（约 3 分钟），再回来筛")
     refreshed = False
     source = "corpus"
     # 容器里没有 zsxq-cli（凭证是 macOS 钥匙串加密的），抓帖由宿主机代劳，
@@ -200,8 +205,9 @@ def screen(mode="target", win5=5, pool_days=90, log=print, save=True):
     posts, refreshed, source = load_all_posts(win5, log)
     newest = max(p[0] for p in posts)
     rp = os.path.join(BASE, "resolved.json")
-    rv_age = (datetime.now() - datetime.fromtimestamp(os.path.getmtime(rp))).days \
-        if os.path.exists(rp) else 999
+    rv_missing = not os.path.exists(rp)
+    rv_age = None if rv_missing else \
+        (datetime.now() - datetime.fromtimestamp(os.path.getmtime(rp))).days
 
     pool = collections.Counter()
     for day, txt in posts:
@@ -241,6 +247,7 @@ def screen(mode="target", win5=5, pool_days=90, log=print, save=True):
 
     meta = {"mode": mode, "win5": win5, "pool_days": pool_days,
             "corpus_newest": newest, "corpus_age_days": rv_age,
+            "corpus_missing": rv_missing,
             "refreshed": refreshed, "corpus_source": source,
             "pool_size": len(pool),
             "dropped": dict(dropped), "run_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -358,8 +365,13 @@ def main():
     print(f"活跃池（近{pool_days}天被提及）∩ 近{win5}天「翻倍空间」信号：{len(rows)} 只　口径={mode}")
     print("买入规则：信号次日买入，不等回调（回测见 entry_rules.py）")
     print(f"出场规则：暂不设止损；如需机械出场，止盈 +{TP*100:.0f}% 或 持满 {HOLD} 日")
-    print(f"语料最新 {meta['corpus_newest']}（{meta['corpus_age_days']} 天前）"
-          f"　帖子来源={ {'network': '本次实时抓取', 'cache': '抓取缓存'}.get(meta['corpus_source'], '本地语料') }")
+    src_txt = {"network": "本次实时抓取", "cache": "抓取缓存"}.get(meta["corpus_source"], "本地语料")
+    if meta.get("corpus_missing"):
+        print(f"!! 语料库缺失（无 resolved.json）　本次只用抓到的帖子，"
+              f"活跃池 {meta['pool_size']} 只　来源={src_txt}　结果不完整")
+    else:
+        print(f"语料最新 {meta['corpus_newest']}（{meta['corpus_age_days']} 天前）"
+              f"　帖子来源={src_txt}")
     print("=" * 112)
     print(f"{'代码':<8}{'名称':<9}{'信号日':>12}{'买入日':>12}{'买入价':>8}"
           f"{'最新价':>8}{'浮动盈亏':>9}{'状态':>14}")

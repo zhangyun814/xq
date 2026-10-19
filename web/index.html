@@ -219,14 +219,18 @@ async function loadMeta(){
     META = await (await fetch('/api/meta')).json();
   }catch(e){ return; }
   const age = META.corpus_age_days;
-  const dotc = age <= 0 ? '' : (age <= 3 ? 'warn' : 'bad');
+  const missing = META.corpus_missing === true;
+  const dotc = missing ? 'bad' : (age <= 0 ? '' : (age <= 3 ? 'warn' : 'bad'));
   $('#pills').innerHTML = `
-    <span class="pill"><span class="dot ${dotc}"></span>语料 <b>${META.corpus_newest || '—'}</b>${age>0?`（${age} 天前）`:''}</span>
+    <span class="pill"><span class="dot ${dotc}"></span>语料 <b>${missing ? '缺失' : (META.corpus_newest || '—')}</b>${!missing && age > 0 ? `（${age} 天前）` : ''}</span>
     <span class="pill"><span class="dot"></span>行情 <b>实时</b></span>`;
 
   const n = $('#note');
   n.className = 'note show';
-  n.innerHTML = age <= 0
+  n.innerHTML = missing
+    ? `<div>⚠️</div><div><b>没有 resolved.json，语料库是空的——这里筛不出任何东西，那不是"没有信号"。</b>
+        先跑 <code>python3 run_all.py --full</code> 建语料库（约 3 分钟），再回来点按钮。</div>`
+    : age <= 0
     ? `<div>✓</div><div><b>语料是最新的（${META.corpus_newest}）。点按钮会重拉现价、重拉日线、重新做语义归属。</b>
         有新帖要进来，去终端跑一次 <code>python3 active_signals.py</code>，它负责抓帖；抓完回本页点一下就是新数据。</div>`
     : `<div>⚠️</div><div><b>语料还是 ${META.corpus_newest} 的，已经 ${age} 天没更新，活跃池可能漏掉新票。</b>

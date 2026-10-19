@@ -134,16 +134,19 @@ def _run(job_id, mode, win5, pool_days, refresh=False):
 def env_meta():
     """页面首屏用得上的状态：语料多新、有没有星球连接、行情源。"""
     rp = os.path.join(BASE, "resolved.json")
-    newest, age = "", 999
-    try:
-        posts = json.load(open(rp))
-        newest = max(p["time"][:10] for p in posts)
-        age = (datetime.now() - datetime.fromtimestamp(os.path.getmtime(rp))).days
-    except Exception:
-        pass
+    newest, age, missing = "", None, True
+    if os.path.exists(rp):
+        try:
+            posts = json.load(open(rp))
+            newest = max(p["time"][:10] for p in posts)
+            age = (datetime.now() - datetime.fromtimestamp(os.path.getmtime(rp))).days
+            missing = False
+        except Exception:
+            pass
     return {
         "corpus_newest": newest,
         "corpus_age_days": age,
+        "corpus_missing": missing,
         "out_dir": A.OUT,
         "hold": A.HOLD,
         "tp": A.TP,
