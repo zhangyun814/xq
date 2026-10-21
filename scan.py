@@ -173,14 +173,45 @@ def get_quotes(codes):
     return res
 
 
+def headline_target(txt, codes, code2name):
+    """帖子的"主标的"：开头被点名（强call/【】标题）的票。
+    研报体帖子的信号词（目标市值/翻倍空间等）通常在结尾总结段，
+    离开头的名字很远，不能按距离算——只要开头点名的票在候选里，
+    全文信号词都归它。"""
+    head = txt[:60]
+    for c in codes:
+        nm = code2name.get(c)
+        if not nm or len(nm) < 2:
+            continue
+        i = head.find(nm)
+        if i < 0:
+            continue
+        # 名字前有 call/强call/首推/重点推荐 这类强推词，或名字就在最前面
+        before = head[max(0, i - 8):i]
+        if i <= 2 or re.search(r"强?call|首推|重点推荐|强推|call", before, re.I):
+            return c
+    return None
+
+
 def attribute(txt, codes, code2name, kws, max_dist=60):
     """按"信号词 → 最近股票名"的距离归属，避免张冠李戴。
-    距离越远越可能是同一篇研报里的其他票，用阈值卡掉。"""
+    距离越远越可能是同一篇研报里的其他票，用阈值卡掉；
+    但标题点名的主标的（headline_target）不受距离限制。"""
     occ = []
     for k in kws:
         occ += [m.start() for m in re.finditer(re.escape(k), txt)]
     if not occ:
         return None, 10 ** 9, ""
+
+    hl = headline_target(txt, codes, code2name)
+    if hl:
+        nm = code2name.get(hl)
+        if nm and re.search(re.escape(nm), txt):
+            o = occ[0]
+            lo = max(0, o - 24)
+            ctx = txt[lo:o + 24].replace("\n", " ")
+            return hl, 0, ctx
+
     best_code, best_d, best_ctx = None, 10 ** 9, ""
     for c in codes:
         nm = code2name.get(c)
