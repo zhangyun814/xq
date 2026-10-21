@@ -206,11 +206,15 @@ def attribute(txt, codes, code2name, kws, max_dist=60):
     hl = headline_target(txt, codes, code2name)
     if hl:
         nm = code2name.get(hl)
-        if nm and re.search(re.escape(nm), txt):
+        m = re.search(re.escape(nm), txt) if nm else None
+        # 名字后接"研究/认为…"的是分析师署名而非标的，跳过
+        if m and not txt[m.end():m.end() + 4].startswith(
+                ("研究", "认为", "指出", "表示", "团队", "策略", "分析")):
             o = occ[0]
             lo = max(0, o - 24)
             ctx = txt[lo:o + 24].replace("\n", " ")
-            return hl, 0, ctx
+            # 标题归属不是"零距离"的高置信，按中等置信计
+            return hl, 30, ctx
 
     best_code, best_d, best_ctx = None, 10 ** 9, ""
     for c in codes:
