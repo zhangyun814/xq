@@ -7,7 +7,7 @@ import json, os, subprocess, time, re, sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SRC = os.path.join(HERE, "klines.json")
+SRC = os.path.join(HERE, "选股", "klines.json")
 OUT = os.path.join(HERE, "klines_vol.json")
 TMP = "/tmp/kvol_sina"
 os.makedirs(TMP, exist_ok=True)
