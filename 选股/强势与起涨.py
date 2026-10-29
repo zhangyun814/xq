@@ -128,6 +128,7 @@ def ensure_fresh():
     """检查本地缓存是否为最新交易日；不是则清空重抓（约 2 分钟）。"""
     import datetime, glob
     today = datetime.date.today().strftime("%Y-%m-%d")
+    os.makedirs(TMP, exist_ok=True)
     files = [f for f in os.listdir(TMP) if f.endswith(".json")]
     if not files:
         stale = True
